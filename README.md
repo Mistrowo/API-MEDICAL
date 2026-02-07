@@ -14,8 +14,7 @@ API para gestión de citas médicas con autenticación por token, pasarela de pa
 6. [Endpoints de la API](#endpoints-de-la-api)
 7. [Autenticación y Roles](#autenticación-y-roles)
 8. [Validaciones](#validaciones)
-9. [Pruebas Unitarias](#pruebas-unitarias)
-10. [Estrategia de Ramas (Git Flow)](#estrategia-de-ramas-git-flow)
+9. [Estrategia de Ramas (Git Flow)](#estrategia-de-ramas-git-flow)
 
 ---
 
@@ -26,9 +25,9 @@ API para gestión de citas médicas con autenticación por token, pasarela de pa
 | Node.js     | 18+      | Runtime                      |
 | TypeScript  | 5.3      | Lenguaje tipado              |
 | Express     | 4.18     | Framework HTTP               |
-| PostgreSQL  | 14+      | Base de datos relacional     |
+| MySQL       | 8+ / MariaDB | Base de datos (XAMPP)    |
+| mysql2      | 3.7      | Driver MySQL para Node.js    |
 | Helmet      | 7.1      | Headers de seguridad HTTP    |
-| Jest        | 29.7     | Framework de pruebas         |
 | uuid        | 9.0      | Generación de IDs de transacción |
 
 ---
@@ -39,7 +38,7 @@ API para gestión de citas médicas con autenticación por token, pasarela de pa
 medical-appointments-api/
 ├── src/
 │   ├── config/
-│   │   └── db.ts                  # Conexión a PostgreSQL (Singleton)
+│   │   └── db.ts                  # Conexión a MySQL (Singleton)
 │   ├── controllers/
 │   │   └── AppointmentController.ts  # Manejo de peticiones HTTP
 │   ├── domain/
@@ -58,14 +57,9 @@ medical-appointments-api/
 │   │   └── TimeValidator.ts      # Validación de horarios
 │   ├── app.ts                    # Configuración de Express
 │   └── server.ts                 # Punto de entrada
-├── tests/
-│   ├── AppointmentService.test.ts
-│   ├── PaymentService.test.ts
-│   └── TimeValidator.test.ts
 ├── init.sql                       # Script de creación de BD
 ├── .env.example                   # Variables de entorno (plantilla)
 ├── .gitignore
-├── jest.config.js
 ├── package.json
 ├── tsconfig.json
 └── README.md
@@ -80,7 +74,7 @@ medical-appointments-api/
 | Patrón      | Ubicación                | Descripción                                                  |
 |------------|--------------------------|--------------------------------------------------------------|
 | Repository | `AppointmentRepository`  | Abstrae el acceso a datos, desacoplando la lógica de SQL     |
-| Singleton  | `config/db.ts`           | Una única instancia del Pool de conexiones a PostgreSQL      |
+| Singleton  | `config/db.ts`           | Una única instancia del Pool de conexiones a MySQL           |
 | Strategy   | `PaymentService`         | Intercambiable por una pasarela real sin modificar el servicio|
 | MVC        | Controllers/Routes/Services | Separación de responsabilidades por capas                 |
 
@@ -101,8 +95,8 @@ medical-appointments-api/
 ### Prerrequisitos
 
 - Node.js 18+
-- PostgreSQL 14+
-- npm o yarn
+- XAMPP (con MySQL/MariaDB activo)
+- npm
 
 ### Pasos
 
@@ -116,17 +110,22 @@ npm install
 
 # 3. Configurar variables de entorno
 cp .env.example .env
-# Editar .env con los datos de tu PostgreSQL
+# Editar .env si es necesario (XAMPP por defecto: root sin contraseña)
 
-# 4. Crear la base de datos y ejecutar el script
-psql -U postgres -c "CREATE DATABASE medical_api;"
-psql -U postgres -d medical_api -f init.sql
+# 4. Iniciar MySQL en XAMPP
+# Abrir XAMPP → Start Apache y MySQL
 
-# 5. Ejecutar en modo desarrollo
+# 5. Crear la base de datos
+# Opción A: Abrir phpMyAdmin (http://localhost/phpmyadmin)
+#   → Pestaña "SQL" → Pegar contenido de init.sql → Ejecutar
+#
+# Opción B: Por terminal
+#   mysql -u root < init.sql
+
+#solo de ejemplo si se requiere otra bdd de mysql se puede hacer insertando init y creando la bdd
+
+# 6. Ejecutar en modo desarrollo
 npm run dev
-
-# 6. Ejecutar pruebas
-npm test
 ```
 
 ### Scripts Disponibles
@@ -136,14 +135,12 @@ npm test
 | `npm run dev`   | Inicia el servidor en modo desarrollo    |
 | `npm run build` | Compila TypeScript a JavaScript          |
 | `npm start`     | Ejecuta la versión compilada (producción)|
-| `npm test`      | Ejecuta las pruebas unitarias con cobertura |
-| `npm run test:watch` | Ejecuta pruebas en modo watch       |
 
 ---
 
 ## Base de Datos
 
-Motor: **PostgreSQL**
+Motor: **MySQL 8+ / MariaDB (XAMPP)**
 
 ### Diagrama de Tablas
 
@@ -151,12 +148,12 @@ Motor: **PostgreSQL**
 ┌──────────────────────────┐       ┌──────────────────────────────┐
 │         users            │       │       appointments           │
 ├──────────────────────────┤       ├──────────────────────────────┤
-│ id          SERIAL PK    │──┐    │ id              SERIAL PK    │
+│ id          INT PK AI    │──┐    │ id              INT PK AI    │
 │ name        VARCHAR(100) │  │    │ patient_id      INT FK ──────│──→ users.id
 │ email       VARCHAR(150) │  │    │ doctor_id       INT FK ──────│──→ users.id
-│ role        VARCHAR(20)  │  └────│ date_time       TIMESTAMP    │
+│ role        ENUM         │  └────│ date_time       DATETIME     │
 │ specialty   VARCHAR(100) │       │ reason          VARCHAR(255) │
-│ token       VARCHAR(255) │       │ status          VARCHAR(20)  │
+│ token       VARCHAR(255) │       │ status          ENUM         │
 │ created_at  TIMESTAMP    │       │ transaction_id  VARCHAR(100) │
 └──────────────────────────┘       │ amount          DECIMAL(10,2)│
                                    │ notes           TEXT          │
@@ -182,15 +179,16 @@ PENDING_PAYMENT  ──(pago)──→  PAID  ──(médico confirma)──→ 
 
 **Rol requerido:** PATIENT
 
-```bash
-curl -X POST http://localhost:3000/appointments \
-  -H "Authorization: patient-token-123" \
-  -H "Content-Type: application/json" \
-  -d '{
+```
+POST http://localhost:3000/appointments
+Header: Authorization: patient-token-123
+Header: Content-Type: application/json
+Body:
+{
     "doctorId": 3,
-    "date": "2025-07-15T09:00:00Z",
+    "date": "2026-07-15T09:00:00Z",
     "reason": "Dolor de cabeza persistente"
-  }'
+}
 ```
 
 **Respuesta exitosa (201):**
@@ -201,7 +199,7 @@ curl -X POST http://localhost:3000/appointments \
     "id": 1,
     "patient_id": 1,
     "doctor_id": 3,
-    "date_time": "2025-07-15T09:00:00.000Z",
+    "date_time": "2026-07-15T09:00:00.000Z",
     "reason": "Dolor de cabeza persistente",
     "status": "PENDING_PAYMENT",
     "amount": "50.00"
@@ -213,9 +211,9 @@ curl -X POST http://localhost:3000/appointments \
 
 **Rol requerido:** PATIENT
 
-```bash
-curl -X POST http://localhost:3000/appointments/1/pay \
-  -H "Authorization: patient-token-123"
+```
+POST http://localhost:3000/appointments/1/pay
+Header: Authorization: patient-token-123
 ```
 
 **Respuesta exitosa (200):**
@@ -234,11 +232,14 @@ curl -X POST http://localhost:3000/appointments/1/pay \
 
 **Rol requerido:** DOCTOR
 
-```bash
-curl -X PATCH http://localhost:3000/appointments/1/confirm \
-  -H "Authorization: doctor-token-789" \
-  -H "Content-Type: application/json" \
-  -d '{ "notes": "Traer estudios previos" }'
+```
+PATCH http://localhost:3000/appointments/1/confirm
+Header: Authorization: doctor-token-789
+Header: Content-Type: application/json
+Body:
+{
+    "notes": "Traer estudios previos"
+}
 ```
 
 **Respuesta exitosa (200):**
@@ -253,11 +254,14 @@ curl -X PATCH http://localhost:3000/appointments/1/confirm \
 
 **Rol requerido:** DOCTOR
 
-```bash
-curl -X PATCH http://localhost:3000/appointments/1/reject \
-  -H "Authorization: doctor-token-789" \
-  -H "Content-Type: application/json" \
-  -d '{ "notes": "No tengo disponibilidad esa fecha" }'
+```
+PATCH http://localhost:3000/appointments/1/reject
+Header: Authorization: doctor-token-789
+Header: Content-Type: application/json
+Body:
+{
+    "notes": "No tengo disponibilidad esa fecha"
+}
 ```
 
 **Respuesta exitosa (200):**
@@ -272,20 +276,20 @@ curl -X PATCH http://localhost:3000/appointments/1/reject \
 
 **Rol requerido:** DOCTOR
 
-```bash
-curl http://localhost:3000/appointments/agenda?date=2025-07-15 \
-  -H "Authorization: doctor-token-789"
+```
+GET http://localhost:3000/appointments/agenda?date=2026-07-15
+Header: Authorization: doctor-token-789
 ```
 
 **Respuesta exitosa (200):**
 ```json
 {
   "doctor": "Dr. House",
-  "date": "2025-07-15",
+  "date": "2026-07-15",
   "total": 2,
   "appointments": [
-    { "id": 1, "patient_name": "Alex Paciente", "date_time": "2025-07-15T09:00:00Z", "status": "CONFIRMED" },
-    { "id": 2, "patient_name": "María López", "date_time": "2025-07-15T10:00:00Z", "status": "PAID" }
+    { "id": 1, "patient_name": "Alex Paciente", "date_time": "2026-07-15T09:00:00Z", "status": "CONFIRMED" },
+    { "id": 2, "patient_name": "María López", "date_time": "2026-07-15T10:00:00Z", "status": "PAID" }
   ]
 }
 ```
@@ -294,9 +298,9 @@ curl http://localhost:3000/appointments/agenda?date=2025-07-15 \
 
 **Rol requerido:** PATIENT
 
-```bash
-curl http://localhost:3000/appointments/history \
-  -H "Authorization: patient-token-123"
+```
+GET http://localhost:3000/appointments/history
+Header: Authorization: patient-token-123
 ```
 
 **Respuesta exitosa (200):**
@@ -305,16 +309,16 @@ curl http://localhost:3000/appointments/history \
   "patient": "Alex Paciente",
   "total": 3,
   "appointments": [
-    { "id": 3, "doctor_name": "Dra. Grey", "doctor_specialty": "Cardiología", "date_time": "2025-07-20T14:00:00Z", "status": "PENDING_PAYMENT" },
-    { "id": 1, "doctor_name": "Dr. House", "doctor_specialty": "Medicina General", "date_time": "2025-07-15T09:00:00Z", "status": "CONFIRMED" }
+    { "id": 3, "doctor_name": "Dra. Grey", "doctor_specialty": "Cardiología", "date_time": "2026-07-20T14:00:00Z", "status": "PENDING_PAYMENT" },
+    { "id": 1, "doctor_name": "Dr. House", "doctor_specialty": "Medicina General", "date_time": "2026-07-15T09:00:00Z", "status": "CONFIRMED" }
   ]
 }
 ```
 
 ### 7. Health Check — `GET /health`
 
-```bash
-curl http://localhost:3000/health
+```
+GET http://localhost:3000/health
 ```
 
 ---
@@ -362,6 +366,7 @@ La autenticación se realiza mediante un **token estático** enviado en el heade
 | Formato de fecha YYYY-MM-DD para agenda            | GET /appointments/agenda |
 
 ---
+
 ## Estrategia de Ramas (Git Flow)
 
 ### Ramas Principales
@@ -384,7 +389,6 @@ main
       ├── feature/create-appointment
       ├── feature/payment-sandbox
       ├── feature/api-endpoints
-      ├── feature/unit-tests
       └── feature/documentation
 ```
 
