@@ -362,29 +362,6 @@ La autenticación se realiza mediante un **token estático** enviado en el heade
 | Formato de fecha YYYY-MM-DD para agenda            | GET /appointments/agenda |
 
 ---
-
-## Pruebas Unitarias
-
-Se incluyen **31 pruebas unitarias** organizadas en 3 suites:
-
-```bash
-# Ejecutar todas las pruebas
-npm test
-
-# Ejecutar con modo watch
-npm run test:watch
-```
-
-### Cobertura
-
-| Suite                        | Tests | Descripción                                    |
-|-----------------------------|-------|------------------------------------------------|
-| `TimeValidator.test.ts`     | 14    | Validación de horarios, fechas futuras         |
-| `PaymentService.test.ts`    | 4     | Procesamiento de pagos sandbox                 |
-| `AppointmentService.test.ts`| 13    | Lógica de negocio completa con mocks           |
-
----
-
 ## Estrategia de Ramas (Git Flow)
 
 ### Ramas Principales
@@ -431,7 +408,3 @@ Se utiliza [Conventional Commits](https://www.conventionalcommits.org/):
 | `refactor:` | Refactorización sin cambio funcional   |
 
 ---
-
-## Autor
-
-Proyecto académico — API RESTful con TypeScript, Express y PostgreSQL.
