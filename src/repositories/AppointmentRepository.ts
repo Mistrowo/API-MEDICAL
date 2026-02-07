@@ -8,6 +8,7 @@
 
 import { db } from '../config/db';
 import { Appointment, AppointmentStatus } from '../domain/Appointment';
+import { RowDataPacket, ResultSetHeader } from 'mysql2';
 
 export class AppointmentRepository {
 
@@ -19,14 +20,14 @@ export class AppointmentRepository {
      * @returns La cita encontrada o undefined.
      */
     async findByDoctorAndDate(doctorId: number, dateTime: string): Promise<any | undefined> {
-        const result = await db.query(
+        const [rows] = await db.query<RowDataPacket[]>(
             `SELECT * FROM appointments
-             WHERE doctor_id = $1
-               AND date_time = $2
+             WHERE doctor_id = ?
+               AND date_time = ?
                AND status NOT IN ('REJECTED')`,
             [doctorId, dateTime]
         );
-        return result.rows[0];
+        return rows[0];
     }
 
     /**
@@ -35,11 +36,11 @@ export class AppointmentRepository {
      * @returns La cita encontrada o undefined.
      */
     async findById(id: number): Promise<any | undefined> {
-        const result = await db.query(
-            'SELECT * FROM appointments WHERE id = $1',
+        const [rows] = await db.query<RowDataPacket[]>(
+            'SELECT * FROM appointments WHERE id = ?',
             [id]
         );
-        return result.rows[0];
+        return rows[0];
     }
 
     /**
@@ -48,13 +49,18 @@ export class AppointmentRepository {
      * @returns La cita creada con su ID asignado.
      */
     async save(appt: Appointment): Promise<any> {
-        const result = await db.query(
+        const [result] = await db.query<ResultSetHeader>(
             `INSERT INTO appointments (patient_id, doctor_id, date_time, reason, amount)
-             VALUES ($1, $2, $3, $4, $5)
-             RETURNING *`,
+             VALUES (?, ?, ?, ?, ?)`,
             [appt.patientId, appt.doctorId, appt.dateTime, appt.reason || null, appt.amount || 0]
         );
-        return result.rows[0];
+
+        // Retornar la cita recién creada
+        const [rows] = await db.query<RowDataPacket[]>(
+            'SELECT * FROM appointments WHERE id = ?',
+            [result.insertId]
+        );
+        return rows[0];
     }
 
     /**
@@ -65,14 +71,18 @@ export class AppointmentRepository {
      * @returns La cita actualizada.
      */
     async updateStatus(id: number, status: AppointmentStatus, txnId?: string): Promise<any> {
-        const result = await db.query(
+        await db.query(
             `UPDATE appointments
-             SET status = $1, transaction_id = $2, updated_at = CURRENT_TIMESTAMP
-             WHERE id = $3
-             RETURNING *`,
+             SET status = ?, transaction_id = ?
+             WHERE id = ?`,
             [status, txnId || null, id]
         );
-        return result.rows[0];
+
+        const [rows] = await db.query<RowDataPacket[]>(
+            'SELECT * FROM appointments WHERE id = ?',
+            [id]
+        );
+        return rows[0];
     }
 
     /**
@@ -81,14 +91,16 @@ export class AppointmentRepository {
      * @param notes - Notas a agregar.
      */
     async addNotes(id: number, notes: string): Promise<any> {
-        const result = await db.query(
-            `UPDATE appointments
-             SET notes = $1, updated_at = CURRENT_TIMESTAMP
-             WHERE id = $2
-             RETURNING *`,
+        await db.query(
+            `UPDATE appointments SET notes = ? WHERE id = ?`,
             [notes, id]
         );
-        return result.rows[0];
+
+        const [rows] = await db.query<RowDataPacket[]>(
+            'SELECT * FROM appointments WHERE id = ?',
+            [id]
+        );
+        return rows[0];
     }
 
     /**
@@ -99,16 +111,16 @@ export class AppointmentRepository {
      * @returns Array de citas del día.
      */
     async findByDoctorAndDay(doctorId: number, date: string): Promise<any[]> {
-        const result = await db.query(
+        const [rows] = await db.query<RowDataPacket[]>(
             `SELECT a.*, u.name AS patient_name, u.email AS patient_email
              FROM appointments a
              JOIN users u ON a.patient_id = u.id
-             WHERE a.doctor_id = $1
-               AND DATE(a.date_time) = $2
+             WHERE a.doctor_id = ?
+               AND DATE(a.date_time) = ?
              ORDER BY a.date_time ASC`,
             [doctorId, date]
         );
-        return result.rows;
+        return rows;
     }
 
     /**
@@ -117,14 +129,14 @@ export class AppointmentRepository {
      * @returns Array de citas del paciente ordenadas por fecha.
      */
     async findByPatient(patientId: number): Promise<any[]> {
-        const result = await db.query(
+        const [rows] = await db.query<RowDataPacket[]>(
             `SELECT a.*, u.name AS doctor_name, u.specialty AS doctor_specialty
              FROM appointments a
              JOIN users u ON a.doctor_id = u.id
-             WHERE a.patient_id = $1
+             WHERE a.patient_id = ?
              ORDER BY a.date_time DESC`,
             [patientId]
         );
-        return result.rows;
+        return rows;
     }
 }

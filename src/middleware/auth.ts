@@ -10,6 +10,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { db } from '../config/db';
 import { User } from '../domain/User';
+import { RowDataPacket } from 'mysql2';
 
 /**
  * Middleware que autentica al usuario mediante token en el header.
@@ -26,15 +27,17 @@ export const auth = async (req: Request, res: Response, next: NextFunction): Pro
             return;
         }
 
-        const result = await db.query('SELECT * FROM users WHERE token = $1', [token]);
+        const [rows] = await db.query<RowDataPacket[]>(
+            'SELECT * FROM users WHERE token = ?', [token]
+        );
 
-        if (result.rowCount === 0) {
+        if (rows.length === 0) {
             res.status(403).json({ error: 'Token inválido o expirado' });
             return;
         }
 
         // Se almacena en res.locals (no en req.body) para no contaminar el body
-        const row = result.rows[0];
+        const row = rows[0];
         const user: User = {
             id: row.id,
             name: row.name,
